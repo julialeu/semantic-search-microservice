@@ -5,16 +5,16 @@ import pytest
 
 client = TestClient(app)
 
-# Fixture para limpiar la base de datos y el índice antes y después de los tests
+# Fixture para limpiar la base de datos y el ï¿½ndice antes y despuï¿½s de los tests
 @pytest.fixture(scope="module", autouse=True)
 def setup_teardown():
     # Setup: Limpiar antes de empezar
     if os.path.exists("index.faiss"): os.remove("index.faiss")
     if os.path.exists("metadata.db"): os.remove("metadata.db")
     
-    yield # Aquí es donde se ejecutan los tests
+    yield # Aquï¿½ es donde se ejecutan los tests
     
-    # Teardown: Limpiar después de terminar
+    # Teardown: Limpiar despuï¿½s de terminar
     if os.path.exists("index.faiss"): os.remove("index.faiss")
     if os.path.exists("metadata.db"): os.remove("metadata.db")
 
@@ -32,10 +32,10 @@ def test_index_and_search_flow():
         assert response.status_code == 201
         indexed_ids.append(response.json()["id"])
 
-    # 2. Realizar una búsqueda semánticamente similar a uno de los documentos
-    # (Como usamos embeddings FALSOS, la búsqueda será aleatoria, pero podemos
+    # 2. Realizar una bï¿½squeda semï¿½nticamente similar a uno de los documentos
+    # (Como usamos embeddings FALSOS, la bï¿½squeda serï¿½ aleatoria, pero podemos
     # verificar la estructura de la respuesta)
-    search_query = "Qué es una estrella?"
+    search_query = "Quï¿½ es una estrella?"
     response = client.post("/search", json={"query": search_query, "top_k": 2})
     
     # 3. Verificar la respuesta

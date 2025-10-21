@@ -3,14 +3,17 @@ from pydantic import BaseModel, Field
 import traceback
 
 from app.application.use_cases import IndexDocumentUseCase, SearchDocumentsUseCase
-from app.infrastructure.repositories import FAISSDocumentRepository, MockEmbeddingService
+from app.infrastructure.repositories import (
+    FAISSDocumentRepository,
+    MockEmbeddingService,
+)
 from typing import List
 
 # --- Inicialización de la App y Dependencias ---
 app = FastAPI(
     title="Semantic Search Service",
     description="API for indexing and searching documents using embeddings.",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # Instanciamos nuestras implementaciones concretas.
@@ -20,25 +23,35 @@ embed_svc = MockEmbeddingService()
 index_use_case = IndexDocumentUseCase(repo=doc_repo, embed_svc=embed_svc)
 search_use_case = SearchDocumentsUseCase(repo=doc_repo, embed_svc=embed_svc)
 
+
 # --- Modelos de Datos (DTOs) ---
 class IndexRequest(BaseModel):
-    content: str = Field(..., min_length=1, description="El texto del documento a indexar.")
+    content: str = Field(
+        ..., min_length=1, description="El texto del documento a indexar."
+    )
+
 
 class IndexResponse(BaseModel):
     id: str
     status: str = "indexed"
 
+
 class SearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, description="Texto de la consulta para la búsqueda.")
+    query: str = Field(
+        ..., min_length=1, description="Texto de la consulta para la búsqueda."
+    )
     top_k: int = Field(3, gt=0, le=10, description="Número de resultados a devolver.")
+
 
 class SearchResult(BaseModel):
     id: str
     content: str
     score: float
 
+
 class SearchResponse(BaseModel):
     results: List[SearchResult]
+
 
 # --- Endpoints ---
 @app.post("/documents", response_model=IndexResponse, status_code=201)
@@ -55,8 +68,9 @@ def index_document(request: IndexRequest):
     except Exception as e:
         # --- print(f"!!! Error inesperado en el endpoint /documents: {e}") ---
         traceback.print_exc()
-       
+
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
 
 @app.post("/search", response_model=SearchResponse)
 def search_documents(request: SearchRequest):
@@ -68,7 +82,8 @@ def search_documents(request: SearchRequest):
         results = search_use_case.execute(query=request.query, top_k=request.top_k)
         return SearchResponse(results=results)
     except Exception as e:
-       # Loggear el error en un sistema real
-       raise HTTPException(status_code=500, detail="Error interno del servidor.")    
+        # Loggear el error en un sistema real
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
 
 # Comando para ejecutar: uvicorn app.interfaces.api:app --reload
