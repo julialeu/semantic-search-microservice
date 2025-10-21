@@ -1,11 +1,11 @@
 # Entorno virtual
 .venv/
 
-# Bases de datos y ficheros de índice locales
+# Bases de datos y ficheros de ï¿½ndice locales
 *.db
 *.faiss
 
-# Caché de Python
+# Cachï¿½ de Python
 __pycache__/
 *.pyc
 
