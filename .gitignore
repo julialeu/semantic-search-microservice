@@ -1,0 +1,14 @@
+# Entorno virtual
+.venv/
+
+# Bases de datos y ficheros de índice locales
+*.db
+*.faiss
+
+# Caché de Python
+__pycache__/
+*.pyc
+
+# Archivos del editor
+.vscode/
+.vs/
