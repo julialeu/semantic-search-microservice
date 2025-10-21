@@ -31,10 +31,11 @@ class MockEmbeddingService(IEmbeddingService):
 
 # --- Implementación del Repositorio de Documentos ---
 class FAISSDocumentRepository(IDocumentRepository):
-    def __init__(self, index_path="index.faiss", db_path="metadata.db"):
+    # --- MÉTODO MODIFICADO ---
+    def __init__(self, index_path: str = "index.faiss", db_path: str = "metadata.db"):
         self.index_path = index_path
         self.db_path = db_path
-        self.dimension = 1536  # Dimensión de los embeddings
+        self.dimension = 1536
 
         self._initialize_db()
         self._load_index()
