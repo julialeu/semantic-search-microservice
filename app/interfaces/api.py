@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import traceback
 
-from app.application.use_cases import IndexDocumentUseCase
+from app.application.use_cases import IndexDocumentUseCase, SearchDocumentsUseCase
 from app.infrastructure.repositories import FAISSDocumentRepository, MockEmbeddingService
+from typing import List
 
 # --- Inicialización de la App y Dependencias ---
 app = FastAPI(
@@ -17,6 +18,7 @@ app = FastAPI(
 doc_repo = FAISSDocumentRepository()
 embed_svc = MockEmbeddingService()
 index_use_case = IndexDocumentUseCase(repo=doc_repo, embed_svc=embed_svc)
+search_use_case = SearchDocumentsUseCase(repo=doc_repo, embed_svc=embed_svc)
 
 # --- Modelos de Datos (DTOs) ---
 class IndexRequest(BaseModel):
@@ -25,6 +27,18 @@ class IndexRequest(BaseModel):
 class IndexResponse(BaseModel):
     id: str
     status: str = "indexed"
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="Texto de la consulta para la búsqueda.")
+    top_k: int = Field(3, gt=0, le=10, description="Número de resultados a devolver.")
+
+class SearchResult(BaseModel):
+    id: str
+    content: str
+    score: float
+
+class SearchResponse(BaseModel):
+    results: List[SearchResult]
 
 # --- Endpoints ---
 @app.post("/documents", response_model=IndexResponse, status_code=201)
@@ -39,10 +53,22 @@ def index_document(request: IndexRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # --- LÍNEAS AÑADIDAS PARA DEBUGGING ---
         # --- print(f"!!! Error inesperado en el endpoint /documents: {e}") ---
         traceback.print_exc()
        
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+@app.post("/search", response_model=SearchResponse)
+def search_documents(request: SearchRequest):
+    """
+    Realiza una búsqueda semántica.
+    Recibe una consulta, genera su embedding y devuelve los documentos más similares.
+    """
+    try:
+        results = search_use_case.execute(query=request.query, top_k=request.top_k)
+        return SearchResponse(results=results)
+    except Exception as e:
+       # Loggear el error en un sistema real
+       raise HTTPException(status_code=500, detail="Error interno del servidor.")    
 
 # Comando para ejecutar: uvicorn app.interfaces.api:app --reload

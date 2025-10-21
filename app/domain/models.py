@@ -1,5 +1,5 @@
 import uuid
-from typing import List, NewType
+from typing import List, NewType, Tuple
 
 # --- Value Objects ---
 DocumentID = NewType('DocumentID', str)
@@ -25,6 +25,14 @@ class IDocumentRepository:
         raise NotImplementedError
 
     def find_by_id(self, doc_id: DocumentID) -> Document:
+        raise NotImplementedError
+
+    def find_similar(self, embedding: Embedding, top_k: int) -> List[Tuple[Document, float]]:
+        """
+        Encuentra los 'top_k' documentos más similares a un embedding.
+        Devuelve una lista de tuplas, donde cada tupla contiene
+        el Documento y su puntuación de similitud (distancia).
+        """
         raise NotImplementedError
         
 class IEmbeddingService:

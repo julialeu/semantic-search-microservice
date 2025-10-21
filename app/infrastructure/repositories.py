@@ -75,3 +75,33 @@ class FAISSDocumentRepository(IDocumentRepository):
     def find_by_id(self, doc_id: DocumentID) -> Document:
         # Implementación pendiente para la próxima iteración
         pass
+
+    def find_similar(self, embedding: Embedding, top_k: int) -> List[Tuple[Document, float]]:
+        if self.index.ntotal == 0:
+            return [] # No hay nada indexado
+
+        query_vector = np.array([embedding]).astype('float32')
+        
+        # 1. Buscar en FAISS
+        # D devuelve las distancias (L2), I devuelve los índices (posiciones)
+        distances, indices = self.index.search(query_vector, top_k)
+        
+        results = []
+        
+        # 2. Recuperar contenido de SQLite
+        cursor = self.conn.cursor()
+        for i, dist in zip(indices[0], distances[0]):
+            if i == -1: # FAISS puede devolver -1 si hay menos de k resultados
+                continue
+                
+            doc_id = self.id_map[i]
+            cursor.execute("SELECT content FROM documents WHERE id = ?", (doc_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                # Reconstruimos una instancia de Document para devolverla
+                # El embedding no es necesario para la respuesta, así que podemos omitirlo
+                doc = Document(content=row[0], embedding=[], doc_id=doc_id)
+                results.append((doc, float(dist)))
+                
+        return results
