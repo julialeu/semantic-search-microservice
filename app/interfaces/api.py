@@ -87,3 +87,4 @@ def search_documents(request: SearchRequest):
 
 
 # Comando para ejecutar: uvicorn app.interfaces.api:app --reload
+# Un pequeño cambio para forzar la actualización de la CI
