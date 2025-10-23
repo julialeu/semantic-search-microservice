@@ -35,7 +35,7 @@ def test_index_document_success(repo_con_archivos_temporales):
     assert response.status_code == 201
     data = response.json()
     assert "id" in data
-    assert "status" == "indexed"
+    assert data["status"] == "indexed"
 
 
 def test_index_document_empty_content():
