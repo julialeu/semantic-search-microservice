@@ -103,7 +103,7 @@ class FAISSDocumentRepository(IDocumentRepository):
         result = cursor.fetchone()
 
         if result is None:
-            # Opcional: lanzar un error si el documento no existe
+            # TODO: lanzar un error si el documento no existe
             return
 
         doc_int_id = result[0]
