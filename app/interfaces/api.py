@@ -25,37 +25,52 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
 # --- Proveedores de Dependencias ---
 def get_doc_repo() -> IDocumentRepository:
     return FAISSDocumentRepository()
 
+
 def get_embed_svc() -> IEmbeddingService:
     return OpenAIEmbeddingService()
+
 
 # --- Modelos de Datos (DTOs) ---
 from pydantic import BaseModel, Field
 
+
 class IndexRequest(BaseModel):
     content: str = Field(..., min_length=1)
+
+
 class IndexResponse(BaseModel):
     id: str
     status: str = "indexed"
+
+
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(3, gt=0, le=10)
+
+
 class SearchResult(BaseModel):
     id: str
     content: str
     score: float
+
+
 class SearchResponse(BaseModel):
     results: List[SearchResult]
 
+
 # --- Endpoints con Inyección de Dependencias ---
-@app.post("/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED
+)
 def index_document(
     request: IndexRequest,
     repo: IDocumentRepository = Depends(get_doc_repo),
-    embed_svc: IEmbeddingService = Depends(get_embed_svc)
+    embed_svc: IEmbeddingService = Depends(get_embed_svc),
 ):
     """Indexa un nuevo documento."""
     try:
@@ -65,11 +80,12 @@ def index_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/search", response_model=SearchResponse)
 def search_documents(
     request: SearchRequest,
     repo: IDocumentRepository = Depends(get_doc_repo),
-    embed_svc: IEmbeddingService = Depends(get_embed_svc)
+    embed_svc: IEmbeddingService = Depends(get_embed_svc),
 ):
     """Realiza una búsqueda semántica."""
     try:
@@ -79,10 +95,10 @@ def search_documents(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(
-    document_id: str,
-    repo: IDocumentRepository = Depends(get_doc_repo)
+    document_id: str, repo: IDocumentRepository = Depends(get_doc_repo)
 ):
     """Elimina un documento del índice por su ID."""
     try:
