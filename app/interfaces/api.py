@@ -1,8 +1,7 @@
 import os
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, status, Depends
 from dotenv import load_dotenv
-from typing import List, Any
+from typing import List
 
 from app.application.use_cases import (
     IndexDocumentUseCase,
@@ -13,101 +12,82 @@ from app.infrastructure.repositories import (
     FAISSDocumentRepository,
     OpenAIEmbeddingService,
 )
+from app.domain.models import IDocumentRepository, IEmbeddingService
 
-# Carga las variables de entorno desde el fichero .env al iniciar la aplicación.
+# --- Carga y Verificación de Configuración ---
 load_dotenv()
-
-# --- Verificación de configuración ---
-# Es una buena práctica verificar que las claves necesarias existen al arrancar.
 if not os.getenv("OPENAI_API_KEY"):
-    raise RuntimeError(
-        "La variable de entorno OPENAI_API_KEY no está configurada. "
-        "Por favor, crea un fichero .env y añade tu clave."
-    )
+    raise RuntimeError("La variable de entorno OPENAI_API_KEY no está configurada.")
 
-# --- Inicialización de la App y Dependencias ---
 app = FastAPI(
     title="Servicio de Búsqueda Semántica",
-    description="API para indexar, buscar y eliminar documentos usando embeddings.",
+    description="API para indexar, buscar y eliminar documentos.",
     version="1.0.0",
 )
 
-# Instanciamos nuestras implementaciones concretas.
-doc_repo = FAISSDocumentRepository()
-embed_svc = OpenAIEmbeddingService()  # <- Usamos la implementación real.
+# --- Proveedores de Dependencias ---
+def get_doc_repo() -> IDocumentRepository:
+    return FAISSDocumentRepository()
 
-# Inyectamos las dependencias en nuestros casos de uso.
-index_use_case = IndexDocumentUseCase(repo=doc_repo, embed_svc=embed_svc)
-search_use_case = SearchDocumentsUseCase(repo=doc_repo, embed_svc=embed_svc)
-delete_use_case = DeleteDocumentUseCase(repo=doc_repo)
+def get_embed_svc() -> IEmbeddingService:
+    return OpenAIEmbeddingService()
 
+# --- Modelos de Datos (DTOs) ---
+from pydantic import BaseModel, Field
 
-# --- Modelos de Datos (DTOs) para la API ---
 class IndexRequest(BaseModel):
-    content: str = Field(..., min_length=1, description="El texto a indexar.")
-
-
+    content: str = Field(..., min_length=1)
 class IndexResponse(BaseModel):
     id: str
     status: str = "indexed"
-
-
 class SearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, description="Texto de la consulta.")
-    top_k: int = Field(3, gt=0, le=10, description="Número de resultados a devolver.")
-
-
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(3, gt=0, le=10)
 class SearchResult(BaseModel):
     id: str
     content: str
     score: float
-
-
 class SearchResponse(BaseModel):
     results: List[SearchResult]
 
-
-# --- Endpoints de la API ---
-@app.post(
-    "/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED
-)
-def index_document(request: IndexRequest):
+# --- Endpoints con Inyección de Dependencias ---
+@app.post("/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED)
+def index_document(
+    request: IndexRequest,
+    repo: IDocumentRepository = Depends(get_doc_repo),
+    embed_svc: IEmbeddingService = Depends(get_embed_svc)
+):
     """Indexa un nuevo documento."""
     try:
-        document_id = index_use_case.execute(request.content)
+        use_case = IndexDocumentUseCase(repo=repo, embed_svc=embed_svc)
+        document_id = use_case.execute(request.content)
         return IndexResponse(id=document_id)
     except Exception as e:
-        # En un sistema real, aquí se registraría el error detallado (logging).
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {e}",
-        )
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/search", response_model=SearchResponse)
-def search_documents(request: SearchRequest):
+def search_documents(
+    request: SearchRequest,
+    repo: IDocumentRepository = Depends(get_doc_repo),
+    embed_svc: IEmbeddingService = Depends(get_embed_svc)
+):
     """Realiza una búsqueda semántica."""
     try:
-        results = search_use_case.execute(query=request.query, top_k=request.top_k)
+        use_case = SearchDocumentsUseCase(repo=repo, embed_svc=embed_svc)
+        results = use_case.execute(query=request.query, top_k=request.top_k)
         return SearchResponse(results=results)
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {e}",
-        )
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(document_id: str):
+def delete_document(
+    document_id: str,
+    repo: IDocumentRepository = Depends(get_doc_repo)
+):
     """Elimina un documento del índice por su ID."""
     try:
-        delete_use_case.execute(document_id)
-        # Una respuesta 204 no debe tener cuerpo.
+        use_case = DeleteDocumentUseCase(repo=repo)
+        use_case.execute(document_id)
         return None
     except Exception as e:
-        # Opcional: Aquí se podría manejar un error de "Documento no encontrado"
-        # y devolver un 404, pero un 500 es aceptable para errores inesperados.
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {e}",
-        )
+        raise HTTPException(status_code=500, detail=str(e))
