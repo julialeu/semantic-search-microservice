@@ -3,6 +3,8 @@ import faiss
 import sqlite3
 import os
 from typing import List, Tuple
+import openai
+from dotenv import load_dotenv
 
 from app.domain.models import (
     Document,
@@ -13,32 +15,43 @@ from app.domain.models import (
 )
 
 
-# --- Implementación del servicio de Embeddings (simulado) ---
-class MockEmbeddingService(IEmbeddingService):
+# --- IMPLEMENTACIÓN REAL DEL SERVICIO DE EMBEDDINGS ---
+class OpenAIEmbeddingService(IEmbeddingService):
     """
-    Una implementación simulada para no depender de la API de OpenAI
-    en esta primera fase. Genera vectores aleatorios.
+    Implementación real que llama a la API de OpenAI para generar embeddings.
     """
+
+    def __init__(self):
+        load_dotenv()  # Carga las variables del fichero .env
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "La variable de entorno OPENAI_API_KEY no está configurada."
+            )
+        self.client = openai.OpenAI(api_key=api_key)
+        self.model = "text-embedding-3-small"  # Modelo eficiente y de bajo coste
 
     def create_embedding(self, text: str) -> Embedding:
-        # Dimensión de los embeddings de OpenAI (text-embedding-ada-002)
-        dim = 1536
-        # Simula un embedding normalizado (norma L2 = 1)
-        vec = np.random.rand(dim).astype("float32")
-        vec /= np.linalg.norm(vec)
-        return Embedding(vec.tolist())
+        # Reemplazar saltos de línea para evitar problemas con algunos modelos
+        text = text.replace("\n", " ")
+        response = self.client.embeddings.create(input=[text], model=self.model)
+        return Embedding(response.data[0].embedding)
 
 
-# --- Implementación del Repositorio de Documentos ---
+# --- IMPLEMENTACIÓN DEL REPOSITORIO DE DOCUMENTOS ---
 class FAISSDocumentRepository(IDocumentRepository):
-    # --- MÉTODO MODIFICADO ---
+    """
+    Repositorio que utiliza FAISS para la búsqueda vectorial y SQLite para los metadatos.
+    Soporta la adición, búsqueda y eliminación de documentos.
+    """
+
     def __init__(self, index_path: str = "index.faiss", db_path: str = "metadata.db"):
         self.index_path = index_path
         self.db_path = db_path
-        self.dimension = 1536
+        self.dimension = 1536  # Dimensión de text-embedding-3-small
 
         self._initialize_db()
-        self._load_index()
+        self._load_or_create_index()
 
     def _initialize_db(self):
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -49,73 +62,92 @@ class FAISSDocumentRepository(IDocumentRepository):
                 id TEXT PRIMARY KEY,
                 content TEXT NOT NULL
             )
-        """
+            """
         )
         self.conn.commit()
 
-    def _load_index(self):
+    def _load_or_create_index(self):
         if os.path.exists(self.index_path):
             self.index = faiss.read_index(self.index_path)
-            # Mapeo de la posición en FAISS (0, 1, 2...) al DocumentID (UUID)
-            cursor = self.conn.cursor()
-            rows = cursor.execute("SELECT id FROM documents ORDER BY rowid").fetchall()
-            self.id_map = [DocumentID(row[0]) for row in rows]
         else:
-            self.index = faiss.IndexFlatL2(self.dimension)
-            self.id_map = []
+            # IndexIDMap2 permite mapear un ID de 64 bits a un vector.
+            # Esto es esencial para poder borrar por ID.
+            self.index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.dimension))
 
     def _save_index(self):
         faiss.write_index(self.index, self.index_path)
 
     def save(self, document: Document):
-        # 1. Guardar metadatos en SQLite
+        # 1. Guardar metadatos en SQLite para obtener el rowid
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO documents (id, content) VALUES (?, ?)",
             (document.id, document.content),
         )
+        # Obtenemos el rowid
+        doc_int_id = cursor.lastrowid
         self.conn.commit()
 
-        # 2. Añadir embedding a FAISS
+        # 2. Añadir embedding a FAISS usando el rowid como ID
         embedding_np = np.array([document.embedding]).astype("float32")
-        self.index.add(embedding_np)
-        self.id_map.append(document.id)
+        self.index.add_with_ids(embedding_np, np.array([doc_int_id]))
 
         # 3. Persistir el índice FAISS en disco
         self._save_index()
 
-    def find_by_id(self, doc_id: DocumentID) -> Document:
-        # Implementación pendiente para la próxima iteración
-        pass
+    def delete(self, doc_id: DocumentID):
+        cursor = self.conn.cursor()
+
+        # 1. Obtener el rowid de SQLite a partir del UUID
+        cursor.execute("SELECT rowid FROM documents WHERE id = ?", (doc_id,))
+        result = cursor.fetchone()
+
+        if result is None:
+            # Opcional: lanzar un error si el documento no existe
+            return
+
+        doc_int_id = result[0]
+
+        # 2. Eliminar de FAISS usando el rowid
+        self.index.remove_ids(np.array([doc_int_id]))
+
+        # 3. Eliminar de SQLite usando el UUID
+        cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        self.conn.commit()
+
+        # 4. Persistir cambios en el índice
+        self._save_index()
 
     def find_similar(
         self, embedding: Embedding, top_k: int
     ) -> List[Tuple[Document, float]]:
         if self.index.ntotal == 0:
-            return []  # No hay nada indexado
+            return []
 
         query_vector = np.array([embedding]).astype("float32")
 
-        # 1. Buscar en FAISS
-        # D devuelve las distancias (L2), I devuelve los índices (posiciones)
-        distances, indices = self.index.search(query_vector, top_k)
+        # 1. Buscar en FAISS. Devuelve distancias y los rowids
+        distances, doc_int_ids = self.index.search(query_vector, top_k)
 
         results = []
-
-        # 2. Recuperar contenido de SQLite
         cursor = self.conn.cursor()
-        for i, dist in zip(indices[0], distances[0]):
-            if i == -1:  # FAISS puede devolver -1 si hay menos de k resultados
+
+        # 2. Usar los rowids para recuperar el contenido y el UUID de SQLite
+        for i, dist in zip(doc_int_ids[0], distances[0]):
+            if i == -1:
                 continue
 
-            doc_id = self.id_map[i]
-            cursor.execute("SELECT content FROM documents WHERE id = ?", (doc_id,))
+            cursor.execute(
+                "SELECT id, content FROM documents WHERE rowid = ?", (int(i),)
+            )
             row = cursor.fetchone()
 
             if row:
-                # Reconstruimos una instancia de Document para devolverla
-                # El embedding no es necesario para la respuesta, así que podemos omitirlo
-                doc = Document(content=row[0], embedding=[], doc_id=doc_id)
+                doc_uuid, content = row
+                # Reconstruimos el objeto Document para devolverlo
+                doc = Document(
+                    content=content, embedding=[], doc_id=DocumentID(doc_uuid)
+                )
                 results.append((doc, float(dist)))
 
         return results

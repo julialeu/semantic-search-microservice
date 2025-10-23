@@ -1,5 +1,10 @@
 from typing import List, Dict, Any
-from app.domain.models import Document, IDocumentRepository, IEmbeddingService
+from app.domain.models import (
+    Document,
+    IDocumentRepository,
+    IEmbeddingService,
+    DocumentID,
+)
 
 
 class IndexDocumentUseCase:
@@ -48,3 +53,12 @@ class SearchDocumentsUseCase:
         ]
 
         return results
+
+
+class DeleteDocumentUseCase:
+    def __init__(self, repo: IDocumentRepository):
+        self.repo = repo
+
+    def execute(self, doc_id_str: str):
+        doc_id = DocumentID(doc_id_str)
+        self.repo.delete(doc_id)

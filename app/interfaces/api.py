@@ -1,34 +1,46 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-import traceback
-
-from app.application.use_cases import IndexDocumentUseCase, SearchDocumentsUseCase
-from app.infrastructure.repositories import (
-    FAISSDocumentRepository,
-    MockEmbeddingService,
-)
+import os
+from fastapi import FastAPI, HTTPException, status, Depends
+from dotenv import load_dotenv
 from typing import List
 
-# --- Inicialización de la App y Dependencias ---
+from app.application.use_cases import (
+    IndexDocumentUseCase,
+    SearchDocumentsUseCase,
+    DeleteDocumentUseCase,
+)
+from app.infrastructure.repositories import (
+    FAISSDocumentRepository,
+    OpenAIEmbeddingService,
+)
+from app.domain.models import IDocumentRepository, IEmbeddingService
+
+# --- Carga y Verificación de Configuración ---
+load_dotenv()
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError("La variable de entorno OPENAI_API_KEY no está configurada.")
+
 app = FastAPI(
-    title="Semantic Search Service",
-    description="API for indexing and searching documents using embeddings.",
-    version="0.1.0",
+    title="Servicio de Búsqueda Semántica",
+    description="API para indexar, buscar y eliminar documentos.",
+    version="1.0.0",
 )
 
-# Instanciamos nuestras implementaciones concretas.
-# Esto se podría mejorar con un contenedor de inyección de dependencias.
-doc_repo = FAISSDocumentRepository()
-embed_svc = MockEmbeddingService()
-index_use_case = IndexDocumentUseCase(repo=doc_repo, embed_svc=embed_svc)
-search_use_case = SearchDocumentsUseCase(repo=doc_repo, embed_svc=embed_svc)
+
+# --- Proveedores de Dependencias ---
+def get_doc_repo() -> IDocumentRepository:
+    return FAISSDocumentRepository()
+
+
+def get_embed_svc() -> IEmbeddingService:
+    return OpenAIEmbeddingService()
 
 
 # --- Modelos de Datos (DTOs) ---
+from pydantic import BaseModel, Field
+
+
 class IndexRequest(BaseModel):
-    content: str = Field(
-        ..., min_length=1, description="El texto del documento a indexar."
-    )
+    content: str = Field(..., min_length=1)
 
 
 class IndexResponse(BaseModel):
@@ -37,10 +49,8 @@ class IndexResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(
-        ..., min_length=1, description="Texto de la consulta para la búsqueda."
-    )
-    top_k: int = Field(3, gt=0, le=10, description="Número de resultados a devolver.")
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(3, gt=0, le=10)
 
 
 class SearchResult(BaseModel):
@@ -53,38 +63,47 @@ class SearchResponse(BaseModel):
     results: List[SearchResult]
 
 
-# --- Endpoints ---
-@app.post("/documents", response_model=IndexResponse, status_code=201)
-def index_document(request: IndexRequest):
-    """
-    Indexa un nuevo documento.
-    Recibe un texto, genera su embedding y lo almacena en la base de datos vectorial.
-    """
+# --- Endpoints con Inyección de Dependencias ---
+@app.post(
+    "/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED
+)
+def index_document(
+    request: IndexRequest,
+    repo: IDocumentRepository = Depends(get_doc_repo),
+    embed_svc: IEmbeddingService = Depends(get_embed_svc),
+):
+    """Indexa un nuevo documento."""
     try:
-        document_id = index_use_case.execute(request.content)
+        use_case = IndexDocumentUseCase(repo=repo, embed_svc=embed_svc)
+        document_id = use_case.execute(request.content)
         return IndexResponse(id=document_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # --- print(f"!!! Error inesperado en el endpoint /documents: {e}") ---
-        traceback.print_exc()
-
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/search", response_model=SearchResponse)
-def search_documents(request: SearchRequest):
-    """
-    Realiza una búsqueda semántica.
-    Recibe una consulta, genera su embedding y devuelve los documentos más similares.
-    """
+def search_documents(
+    request: SearchRequest,
+    repo: IDocumentRepository = Depends(get_doc_repo),
+    embed_svc: IEmbeddingService = Depends(get_embed_svc),
+):
+    """Realiza una búsqueda semántica."""
     try:
-        results = search_use_case.execute(query=request.query, top_k=request.top_k)
+        use_case = SearchDocumentsUseCase(repo=repo, embed_svc=embed_svc)
+        results = use_case.execute(query=request.query, top_k=request.top_k)
         return SearchResponse(results=results)
     except Exception as e:
-        # Loggear el error en un sistema real
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# Comando para ejecutar: uvicorn app.interfaces.api:app --reload
-# Un pequeño cambio para forzar la actualización de la CI
+@app.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    document_id: str, repo: IDocumentRepository = Depends(get_doc_repo)
+):
+    """Elimina un documento del índice por su ID."""
+    try:
+        use_case = DeleteDocumentUseCase(repo=repo)
+        use_case.execute(document_id)
+        return None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
