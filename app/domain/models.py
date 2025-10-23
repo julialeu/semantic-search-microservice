@@ -40,6 +40,10 @@ class IDocumentRepository:
         """
         raise NotImplementedError
 
+    def delete(self, doc_id: DocumentID):
+        """Elimina un documento del índice y del almacén de metadatos."""
+        raise NotImplementedError    
+
 
 class IEmbeddingService:
     def create_embedding(self, text: str) -> Embedding:

@@ -1,34 +1,50 @@
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
-import traceback
+from dotenv import load_dotenv
+from typing import List, Any
 
-from app.application.use_cases import IndexDocumentUseCase, SearchDocumentsUseCase
+from app.application.use_cases import (
+    IndexDocumentUseCase,
+    SearchDocumentsUseCase,
+    DeleteDocumentUseCase,
+)
 from app.infrastructure.repositories import (
     FAISSDocumentRepository,
-    MockEmbeddingService,
+    OpenAIEmbeddingService,
 )
-from typing import List
+
+# Carga las variables de entorno desde el fichero .env al iniciar la aplicación.
+load_dotenv()
+
+# --- Verificación de configuración ---
+# Es una buena práctica verificar que las claves necesarias existen al arrancar.
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError(
+        "La variable de entorno OPENAI_API_KEY no está configurada. "
+        "Por favor, crea un fichero .env y añade tu clave."
+    )
 
 # --- Inicialización de la App y Dependencias ---
 app = FastAPI(
-    title="Semantic Search Service",
-    description="API for indexing and searching documents using embeddings.",
-    version="0.1.0",
+    title="Servicio de Búsqueda Semántica",
+    description="API para indexar, buscar y eliminar documentos usando embeddings.",
+    version="1.0.0",
 )
 
 # Instanciamos nuestras implementaciones concretas.
-# Esto se podría mejorar con un contenedor de inyección de dependencias.
 doc_repo = FAISSDocumentRepository()
-embed_svc = MockEmbeddingService()
+embed_svc = OpenAIEmbeddingService()  # <- Usamos la implementación real.
+
+# Inyectamos las dependencias en nuestros casos de uso.
 index_use_case = IndexDocumentUseCase(repo=doc_repo, embed_svc=embed_svc)
 search_use_case = SearchDocumentsUseCase(repo=doc_repo, embed_svc=embed_svc)
+delete_use_case = DeleteDocumentUseCase(repo=doc_repo)
 
 
-# --- Modelos de Datos (DTOs) ---
+# --- Modelos de Datos (DTOs) para la API ---
 class IndexRequest(BaseModel):
-    content: str = Field(
-        ..., min_length=1, description="El texto del documento a indexar."
-    )
+    content: str = Field(..., min_length=1, description="El texto a indexar.")
 
 
 class IndexResponse(BaseModel):
@@ -37,9 +53,7 @@ class IndexResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(
-        ..., min_length=1, description="Texto de la consulta para la búsqueda."
-    )
+    query: str = Field(..., min_length=1, description="Texto de la consulta.")
     top_k: int = Field(3, gt=0, le=10, description="Número de resultados a devolver.")
 
 
@@ -53,38 +67,45 @@ class SearchResponse(BaseModel):
     results: List[SearchResult]
 
 
-# --- Endpoints ---
-@app.post("/documents", response_model=IndexResponse, status_code=201)
+# --- Endpoints de la API ---
+@app.post("/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED)
 def index_document(request: IndexRequest):
-    """
-    Indexa un nuevo documento.
-    Recibe un texto, genera su embedding y lo almacena en la base de datos vectorial.
-    """
+    """Indexa un nuevo documento."""
     try:
         document_id = index_use_case.execute(request.content)
         return IndexResponse(id=document_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # --- print(f"!!! Error inesperado en el endpoint /documents: {e}") ---
-        traceback.print_exc()
-
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+        # En un sistema real, aquí se registraría el error detallado (logging).
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {e}",
+        )
 
 
 @app.post("/search", response_model=SearchResponse)
 def search_documents(request: SearchRequest):
-    """
-    Realiza una búsqueda semántica.
-    Recibe una consulta, genera su embedding y devuelve los documentos más similares.
-    """
+    """Realiza una búsqueda semántica."""
     try:
         results = search_use_case.execute(query=request.query, top_k=request.top_k)
         return SearchResponse(results=results)
     except Exception as e:
-        # Loggear el error en un sistema real
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {e}",
+        )
 
 
-# Comando para ejecutar: uvicorn app.interfaces.api:app --reload
-# Un pequeño cambio para forzar la actualización de la CI
+@app.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: str):
+    """Elimina un documento del índice por su ID."""
+    try:
+        delete_use_case.execute(document_id)
+        # Una respuesta 204 no debe tener cuerpo.
+        return None
+    except Exception as e:
+        # Opcional: Aquí se podría manejar un error de "Documento no encontrado"
+        # y devolver un 404, pero un 500 es aceptable para errores inesperados.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {e}",
+        )

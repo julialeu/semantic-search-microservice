@@ -3,3 +3,5 @@ uvicorn[standard]
 pydantic
 numpy
 faiss-cpu
+openai
+python-dotenv
