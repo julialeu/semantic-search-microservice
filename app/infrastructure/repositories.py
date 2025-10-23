@@ -14,16 +14,20 @@ from app.domain.models import (
     IEmbeddingService,
 )
 
+
 # --- IMPLEMENTACIÓN REAL DEL SERVICIO DE EMBEDDINGS ---
 class OpenAIEmbeddingService(IEmbeddingService):
     """
     Implementación real que llama a la API de OpenAI para generar embeddings.
     """
+
     def __init__(self):
         load_dotenv()  # Carga las variables del fichero .env
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("La variable de entorno OPENAI_API_KEY no está configurada.")
+            raise ValueError(
+                "La variable de entorno OPENAI_API_KEY no está configurada."
+            )
         self.client = openai.OpenAI(api_key=api_key)
         self.model = "text-embedding-3-small"  # Modelo eficiente y de bajo coste
 
@@ -40,6 +44,7 @@ class FAISSDocumentRepository(IDocumentRepository):
     Repositorio que utiliza FAISS para la búsqueda vectorial y SQLite para los metadatos.
     Soporta la adición, búsqueda y eliminación de documentos.
     """
+
     def __init__(self, index_path: str = "index.faiss", db_path: str = "metadata.db"):
         self.index_path = index_path
         self.db_path = db_path
@@ -92,36 +97,38 @@ class FAISSDocumentRepository(IDocumentRepository):
 
     def delete(self, doc_id: DocumentID):
         cursor = self.conn.cursor()
-        
+
         # 1. Obtener el rowid de SQLite a partir del UUID
         cursor.execute("SELECT rowid FROM documents WHERE id = ?", (doc_id,))
         result = cursor.fetchone()
-        
+
         if result is None:
             # Opcional: lanzar un error si el documento no existe
             return
 
         doc_int_id = result[0]
-        
+
         # 2. Eliminar de FAISS usando el rowid
         self.index.remove_ids(np.array([doc_int_id]))
-        
+
         # 3. Eliminar de SQLite usando el UUID
         cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         self.conn.commit()
-        
+
         # 4. Persistir cambios en el índice
         self._save_index()
 
-    def find_similar(self, embedding: Embedding, top_k: int) -> List[Tuple[Document, float]]:
+    def find_similar(
+        self, embedding: Embedding, top_k: int
+    ) -> List[Tuple[Document, float]]:
         if self.index.ntotal == 0:
             return []
 
         query_vector = np.array([embedding]).astype("float32")
-        
+
         # 1. Buscar en FAISS. Devuelve distancias y los rowids
         distances, doc_int_ids = self.index.search(query_vector, top_k)
-        
+
         results = []
         cursor = self.conn.cursor()
 
@@ -129,14 +136,18 @@ class FAISSDocumentRepository(IDocumentRepository):
         for i, dist in zip(doc_int_ids[0], distances[0]):
             if i == -1:
                 continue
-            
-            cursor.execute("SELECT id, content FROM documents WHERE rowid = ?", (int(i),))
+
+            cursor.execute(
+                "SELECT id, content FROM documents WHERE rowid = ?", (int(i),)
+            )
             row = cursor.fetchone()
-            
+
             if row:
                 doc_uuid, content = row
                 # Reconstruimos el objeto Document para devolverlo
-                doc = Document(content=content, embedding=[], doc_id=DocumentID(doc_uuid))
+                doc = Document(
+                    content=content, embedding=[], doc_id=DocumentID(doc_uuid)
+                )
                 results.append((doc, float(dist)))
-                
+
         return results

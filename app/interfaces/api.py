@@ -68,7 +68,9 @@ class SearchResponse(BaseModel):
 
 
 # --- Endpoints de la API ---
-@app.post("/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED
+)
 def index_document(request: IndexRequest):
     """Indexa un nuevo documento."""
     try:

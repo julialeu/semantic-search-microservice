@@ -42,7 +42,7 @@ class IDocumentRepository:
 
     def delete(self, doc_id: DocumentID):
         """Elimina un documento del índice y del almacén de metadatos."""
-        raise NotImplementedError    
+        raise NotImplementedError
 
 
 class IEmbeddingService:

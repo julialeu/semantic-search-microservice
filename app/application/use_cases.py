@@ -1,5 +1,10 @@
 from typing import List, Dict, Any
-from app.domain.models import Document, IDocumentRepository, IEmbeddingService, DocumentID
+from app.domain.models import (
+    Document,
+    IDocumentRepository,
+    IEmbeddingService,
+    DocumentID,
+)
 
 
 class IndexDocumentUseCase:
