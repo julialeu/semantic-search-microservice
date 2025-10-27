@@ -21,7 +21,7 @@ if not os.getenv("OPENAI_API_KEY"):
 
 app = FastAPI(
     title="Servicio de búsqueda semántica",
-    description="API para indexar, buscar y eliminar documentos.",
+    description="API para indexar, buscar y eliminar docs.",
     version="1.0.0",
 )
 
