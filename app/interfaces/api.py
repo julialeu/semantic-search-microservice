@@ -20,7 +20,7 @@ if not os.getenv("OPENAI_API_KEY"):
     raise RuntimeError("La variable de entorno OPENAI_API_KEY no está configurada.")
 
 app = FastAPI(
-    title="Servicio de Búsqueda Semántica",
+    title="Servicio de búsqueda semántica",
     description="API para indexar, buscar y eliminar documentos.",
     version="1.0.0",
 )
