@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException, status, Depends
 from dotenv import load_dotenv
 from typing import List
+from datetime import datetime, timezone
 
 from app.application.use_cases import (
     IndexDocumentUseCase,
@@ -39,6 +40,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Endpoint para comprobar la "salud" del servicio ---
+@app.get("/health", status_code=status.HTTP_200_OK)
+def health_check():
+    """
+    Endpoint de Health Check para verificar que el servicio está activo.
+    """
+    return {
+        "status": "healthy",
+        "service": "semantic-search-microservice",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        # "timestamp": datetime.utcnow().isoformat()
+    }
 
 
 # --- Proveedores de Dependencias ---

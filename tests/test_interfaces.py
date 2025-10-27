@@ -38,6 +38,15 @@ def test_index_document_success(repo_con_archivos_temporales):
     assert data["status"] == "indexed"
 
 
-def test_index_document_empty_content():
+def test_index_document_empty_content(repo_con_archivos_temporales):
     response = client.post("/documents", json={"content": ""})
     assert response.status_code == 422
+
+
+def test_health_check():
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "semantic-search-microservice"
+    assert "timestamp" in data
