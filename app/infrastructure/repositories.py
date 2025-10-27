@@ -45,10 +45,12 @@ class FAISSDocumentRepository(IDocumentRepository):
     Soporta la adición, búsqueda y eliminación de documentos.
     """
 
-    def __init__(self, index_path: str = "index.faiss", db_path: str = "metadata.db"):
+    def __init__(self, index_path: str = "/app/data/index.faiss", db_path: str = "/app/data/metadata.db"):
         self.index_path = index_path
         self.db_path = db_path
         self.dimension = 1536  # Dimensión de text-embedding-3-small
+
+        os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
 
         self._initialize_db()
         self._load_or_create_index()
@@ -71,7 +73,6 @@ class FAISSDocumentRepository(IDocumentRepository):
             self.index = faiss.read_index(self.index_path)
         else:
             # IndexIDMap2 permite mapear un ID de 64 bits a un vector.
-            # Esto es esencial para poder borrar por ID.
             self.index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.dimension))
 
     def _save_index(self):
