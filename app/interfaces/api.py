@@ -30,7 +30,7 @@ allowed_origins = []
 origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
 
 if origins_str:
-    allowed_origins = [origin.strip() for origin in origins_str.split(',')]
+    allowed_origins = [origin.strip() for origin in origins_str.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
