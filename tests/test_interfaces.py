@@ -42,6 +42,7 @@ def test_index_document_empty_content():
     response = client.post("/documents", json={"content": ""})
     assert response.status_code == 422
 
+
 def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200

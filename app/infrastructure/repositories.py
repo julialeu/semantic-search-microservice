@@ -45,7 +45,11 @@ class FAISSDocumentRepository(IDocumentRepository):
     Soporta la adición, búsqueda y eliminación de documentos.
     """
 
-    def __init__(self, index_path: str = "/app/data/index.faiss", db_path: str = "/app/data/metadata.db"):
+    def __init__(
+        self,
+        index_path: str = "/app/data/index.faiss",
+        db_path: str = "/app/data/metadata.db",
+    ):
         self.index_path = index_path
         self.db_path = db_path
         self.dimension = 1536  # Dimensión de text-embedding-3-small

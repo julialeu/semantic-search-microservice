@@ -26,6 +26,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
 # --- Endpoint para comprobar la "salud" del servicio ---
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
@@ -35,9 +36,10 @@ def health_check():
     return {
         "status": "healthy",
         "service": "semantic-search-microservice",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         # "timestamp": datetime.utcnow().isoformat()
     }
+
 
 # --- Proveedores de Dependencias ---
 def get_doc_repo() -> IDocumentRepository:
