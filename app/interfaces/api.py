@@ -21,8 +21,8 @@ if not os.getenv("OPENAI_API_KEY"):
     raise RuntimeError("La variable de entorno OPENAI_API_KEY no está configurada.")
 
 app = FastAPI(
-    title="Servicio de Búsqueda Semántica",
-    description="API para indexar, buscar y eliminar documentos.",
+    title="Servicio de búsqueda semántica",
+    description="API para indexar, buscar y eliminar docs.",
     version="1.0.0",
 )
 
@@ -31,7 +31,7 @@ allowed_origins = []
 origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
 
 if origins_str:
-    allowed_origins = [origin.strip() for origin in origins_str.split(',')]
+    allowed_origins = [origin.strip() for origin in origins_str.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
