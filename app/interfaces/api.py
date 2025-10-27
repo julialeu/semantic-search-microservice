@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException, status, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import List
 
