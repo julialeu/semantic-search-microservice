@@ -13,6 +13,7 @@ from app.domain.models import User
 
 # --- 1. Unit Tests para security.py ---
 
+
 def test_password_hashing_and_verification():
     """
     Verifica que una contraseña se hashea correctamente y que la verificación funciona.
@@ -26,6 +27,7 @@ def test_password_hashing_and_verification():
     assert verify_password(password, hashed_password) is True
     # La verificación con una contraseña incorrecta debe ser False
     assert verify_password("wrongPassword", hashed_password) is False
+
 
 def test_jwt_token_creation_and_decoding():
     """
@@ -42,6 +44,7 @@ def test_jwt_token_creation_and_decoding():
     assert "exp" in decoded_payload  # El token debe tener una fecha de expiración
     assert "type" in decoded_payload and decoded_payload["type"] == "access"
 
+
 def test_decode_invalid_token_returns_none():
     """
     Verifica que decodificar un token inválido o malformado devuelve None.
@@ -51,6 +54,7 @@ def test_decode_invalid_token_returns_none():
 
 
 # --- 2. Integration Tests para UserRepository ---
+
 
 def test_user_repository_save_and_find_by_email(tmp_path):
     """
@@ -63,11 +67,11 @@ def test_user_repository_save_and_find_by_email(tmp_path):
 
     # Creamos un usuario de prueba
     new_user = User(
-        id=None, # El ID se genera al guardar
+        id=None,  # El ID se genera al guardar
         email="test.user@example.com",
         name="Test User",
         hashed_password=get_password_hash("password123"),
-        is_verified=False
+        is_verified=False,
     )
 
     # Guardamos el usuario
@@ -84,6 +88,7 @@ def test_user_repository_save_and_find_by_email(tmp_path):
     assert found_user.id == saved_user.id
     assert found_user.email == "test.user@example.com"
     assert found_user.name == "Test User"
+
 
 def test_find_non_existent_user_returns_none(tmp_path):
     """

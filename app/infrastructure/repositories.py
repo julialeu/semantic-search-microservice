@@ -18,11 +18,13 @@ from app.domain.models import (
     IEmbeddingService,
 )
 
+
 # --- IMPLEMENTACIÓN REAL DEL SERVICIO DE EMBEDDINGS ---
 class OpenAIEmbeddingService(IEmbeddingService):
     """
     Implementación real que llama a la API de OpenAI para generar embeddings.
     """
+
     def __init__(self):
         load_dotenv()  # Carga las variables del fichero .env
         api_key = os.getenv("OPENAI_API_KEY")
@@ -159,10 +161,12 @@ class FAISSDocumentRepository(IDocumentRepository):
 
         return results
 
+
 class UserRepository:
     """
     Repositorio para gestionar los datos de los usuarios en la base de datos.
     """
+
     def __init__(self, db_path: str = "/app/data/users.db"):
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -170,7 +174,8 @@ class UserRepository:
 
     def _initialize_db(self):
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
@@ -180,7 +185,8 @@ class UserRepository:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP
             )
-        """)
+        """
+        )
         self.conn.commit()
 
     def save(self, user: User) -> User:
@@ -188,10 +194,17 @@ class UserRepository:
         cursor = self.conn.cursor()
         user.id = str(uuid.uuid4())
         user.created_at = datetime.now(timezone.utc)
-        
+
         cursor.execute(
             "INSERT INTO users (id, email, name, hashed_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user.id, user.email, user.name, user.hashed_password, user.is_verified, user.created_at)
+            (
+                user.id,
+                user.email,
+                user.name,
+                user.hashed_password,
+                user.is_verified,
+                user.created_at,
+            ),
         )
         self.conn.commit()
         return user
@@ -199,25 +212,45 @@ class UserRepository:
     def find_by_email(self, email: str) -> User | None:
         """Busca un usuario por su dirección de email."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, email, name, hashed_password, is_verified FROM users WHERE email = ?", (email,))
+        cursor.execute(
+            "SELECT id, email, name, hashed_password, is_verified FROM users WHERE email = ?",
+            (email,),
+        )
         row = cursor.fetchone()
         if row:
-            return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
+            return User(
+                id=row[0],
+                email=row[1],
+                name=row[2],
+                hashed_password=row[3],
+                is_verified=bool(row[4]),
+            )
         return None
 
     def find_by_id(self, user_id: str) -> User | None:
         """Busca un usuario por su ID."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, email, name, hashed_password, is_verified FROM users WHERE id = ?", (user_id,))
+        cursor.execute(
+            "SELECT id, email, name, hashed_password, is_verified FROM users WHERE id = ?",
+            (user_id,),
+        )
         row = cursor.fetchone()
         if row:
-            return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
+            return User(
+                id=row[0],
+                email=row[1],
+                name=row[2],
+                hashed_password=row[3],
+                is_verified=bool(row[4]),
+            )
         return None
+
 
 class TokenRepository:
     """
     Repositorio para gestionar los tokens (refresh, verificación, etc.) en la base de datos.
     """
+
     def __init__(self, db_path: str = "/app/data/tokens.db"):
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -225,7 +258,8 @@ class TokenRepository:
 
     def _initialize_db(self):
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS refresh_tokens (
                 token TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -234,7 +268,8 @@ class TokenRepository:
                 is_revoked BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
-        """)
+        """
+        )
         self.conn.commit()
-    
+
     # TODO: Implementar métodos para guardar, buscar y revocar tokens.
