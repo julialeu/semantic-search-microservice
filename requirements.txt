@@ -5,3 +5,12 @@ numpy
 faiss-cpu
 openai
 python-dotenv
+
+# SAutenticación y Seguridad
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+email-validator
+
+# Envío de emails asíncrono
+aiosmtplib
