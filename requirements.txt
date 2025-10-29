@@ -8,9 +8,10 @@ python-dotenv
 
 # SAutenticación y Seguridad
 python-jose[cryptography]
-passlib[bcrypt]
+passlib==1.7.4
+bcrypt==3.2.0
 python-multipart
 email-validator
 
-# Envío de emails asíncrono
+# Envío de emails asinc
 aiosmtplib
