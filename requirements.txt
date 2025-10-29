@@ -12,5 +12,5 @@ passlib[bcrypt]
 python-multipart
 email-validator
 
-# Envío de emails asíncrono
+# Envío de emails asinc
 aiosmtplib
