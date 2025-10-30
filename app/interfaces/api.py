@@ -1,5 +1,13 @@
+# In app/interfaces/api.py
+
 import os
+import traceback
 from fastapi import FastAPI, HTTPException, status, Depends
+
+# --- NEW IMPORTS ---
+from fastapi.security import OAuth2PasswordBearer
+
+# --------------------
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import List
@@ -16,24 +24,28 @@ from app.infrastructure.repositories import (
 )
 from app.domain.models import IDocumentRepository, IEmbeddingService
 
+# --- NEW IMPORT ---
+from app.infrastructure.security import decode_token
+
+# -----------------
+
 # --- Carga y Verificación de Configuración ---
 load_dotenv()
 if not os.getenv("OPENAI_API_KEY"):
     raise RuntimeError("La variable de entorno OPENAI_API_KEY no está configurada.")
 
 app = FastAPI(
-    title="Servicio de búsqueda semántica",
-    description="API para indexar, buscar y eliminar docs.",
+    title="Servicio de Búsqueda Semántica",
+    description="API para indexar, buscar y eliminar documentos.",
     version="1.0.0",
 )
 
+# --- CONFIGURACIÓN DE CORS ---
+# (Your CORS configuration remains here, unchanged)
 allowed_origins = []
-
 origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
-
 if origins_str:
     allowed_origins = [origin.strip() for origin in origins_str.split(",")]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -46,15 +58,33 @@ app.add_middleware(
 # --- Endpoint para comprobar la "salud" del servicio ---
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
-    """
-    Endpoint de Health Check para verificar que el servicio está activo.
-    """
     return {
         "status": "healthy",
         "service": "semantic-search-microservice",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        # "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# --- DEPENDENCIAS DE SEGURIDAD ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    """
+    Dependencia para obtener el usuario actual a partir del token JWT.
+    Valida el token y devuelve el payload.
+    """
+    payload = decode_token(token)
+    if payload is None or payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
+
+
+# --------------------------------
 
 
 # --- Proveedores de Dependencias ---
@@ -96,7 +126,10 @@ class SearchResponse(BaseModel):
 
 # --- Endpoints con Inyección de Dependencias ---
 @app.post(
-    "/documents", response_model=IndexResponse, status_code=status.HTTP_201_CREATED
+    "/documents",
+    response_model=IndexResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],  # <-- PROTECT ENDPOINT
 )
 def index_document(
     request: IndexRequest,
@@ -109,10 +142,15 @@ def index_document(
         document_id = use_case.execute(request.content)
         return IndexResponse(id=document_id)
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/search", response_model=SearchResponse)
+@app.post(
+    "/search",
+    response_model=SearchResponse,
+    dependencies=[Depends(get_current_user)],  # <-- PROTECT ENDPOINT
+)
 def search_documents(
     request: SearchRequest,
     repo: IDocumentRepository = Depends(get_doc_repo),
@@ -127,7 +165,11 @@ def search_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete(
+    "/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_user)],  # <-- PROTECT ENDPOINT
+)
 def delete_document(
     document_id: str, repo: IDocumentRepository = Depends(get_doc_repo)
 ):

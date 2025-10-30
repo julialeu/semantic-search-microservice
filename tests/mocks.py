@@ -13,3 +13,11 @@ class MockEmbeddingService(IEmbeddingService):
         dim = 1536
         vec = np.full(dim, 0.1, dtype="float32")
         return Embedding(vec.tolist())
+
+
+def override_get_current_user():
+    """
+    Una dependencia falsa que simula un usuario autenticado para los tests.
+    Devuelve un diccionario simple que imita el payload de un token JWT decodificado.
+    """
+    return {"user_id": "test_user_id", "email": "test@example.com"}
