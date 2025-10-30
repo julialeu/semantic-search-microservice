@@ -144,14 +144,16 @@ class UserRepository:
         cursor = self.conn.cursor()
         cursor.execute("SELECT id, email, name, hashed_password, is_verified FROM users WHERE email = ?", (email,))
         row = cursor.fetchone()
-        if row: return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
+        if row:
+            return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
         return None
 
     def find_by_id(self, user_id: str) -> User | None:
         cursor = self.conn.cursor()
         cursor.execute("SELECT id, email, name, hashed_password, is_verified FROM users WHERE id = ?", (user_id,))
         row = cursor.fetchone()
-        if row: return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
+        if row:
+            return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
         return None
 
 
