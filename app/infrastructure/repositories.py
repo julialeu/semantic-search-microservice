@@ -1,14 +1,13 @@
-import numpy as np
-import faiss
-import sqlite3
 import os
+import sqlite3
+import uuid
+from datetime import datetime, timezone
 from typing import List, Tuple
+
+import faiss
+import numpy as np
 import openai
 from dotenv import load_dotenv
-import uuid
-from app.domain.models import User
-from datetime import timedelta, datetime, timezone
-
 
 from app.domain.models import (
     Document,
@@ -16,50 +15,35 @@ from app.domain.models import (
     Embedding,
     IDocumentRepository,
     IEmbeddingService,
+    User,
 )
 
 
-# --- IMPLEMENTACIÓN REAL DEL SERVICIO DE EMBEDDINGS ---
 class OpenAIEmbeddingService(IEmbeddingService):
-    """
-    Implementación real que llama a la API de OpenAI para generar embeddings.
-    """
-
     def __init__(self):
-        load_dotenv()  # Carga las variables del fichero .env
+        load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError(
                 "La variable de entorno OPENAI_API_KEY no está configurada."
             )
         self.client = openai.OpenAI(api_key=api_key)
-        self.model = "text-embedding-3-small"  # Modelo eficiente y de bajo coste
+        self.model = "text-embedding-3-small"
 
     def create_embedding(self, text: str) -> Embedding:
-        # Reemplazar saltos de línea para evitar problemas con algunos modelos
         text = text.replace("\n", " ")
         response = self.client.embeddings.create(input=[text], model=self.model)
         return Embedding(response.data[0].embedding)
 
 
-# --- IMPLEMENTACIÓN DEL REPOSITORIO DE DOCUMENTOS ---
 class FAISSDocumentRepository(IDocumentRepository):
-    """
-    Repositorio que utiliza FAISS para la búsqueda vectorial y SQLite para los metadatos.
-    Soporta la adición, búsqueda y eliminación de documentos.
-    """
-
     def __init__(
-        self,
-        index_path: str = "/app/data/index.faiss",
-        db_path: str = "/app/data/metadata.db",
+        self, index_path: str = "data/index.faiss", db_path: str = "data/metadata.db"
     ):
         self.index_path = index_path
         self.db_path = db_path
-        self.dimension = 1536  # Dimensión de text-embedding-3-small
-
+        self.dimension = 1536
         os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
-
         self._initialize_db()
         self._load_or_create_index()
 
@@ -67,12 +51,7 @@ class FAISSDocumentRepository(IDocumentRepository):
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         cursor = self.conn.cursor()
         cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS documents (
-                id TEXT PRIMARY KEY,
-                content TEXT NOT NULL
-            )
-            """
+            "CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, content TEXT NOT NULL)"
         )
         self.conn.commit()
 
@@ -80,51 +59,33 @@ class FAISSDocumentRepository(IDocumentRepository):
         if os.path.exists(self.index_path):
             self.index = faiss.read_index(self.index_path)
         else:
-            # IndexIDMap2 permite mapear un ID de 64 bits a un vector.
             self.index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.dimension))
 
     def _save_index(self):
         faiss.write_index(self.index, self.index_path)
 
     def save(self, document: Document):
-        # 1. Guardar metadatos en SQLite para obtener el rowid
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO documents (id, content) VALUES (?, ?)",
             (document.id, document.content),
         )
-        # Obtenemos el rowid
         doc_int_id = cursor.lastrowid
         self.conn.commit()
-
-        # 2. Añadir embedding a FAISS usando el rowid como ID
         embedding_np = np.array([document.embedding]).astype("float32")
         self.index.add_with_ids(embedding_np, np.array([doc_int_id]))
-
-        # 3. Persistir el índice FAISS en disco
         self._save_index()
 
     def delete(self, doc_id: DocumentID):
         cursor = self.conn.cursor()
-
-        # 1. Obtener el rowid de SQLite a partir del UUID
         cursor.execute("SELECT rowid FROM documents WHERE id = ?", (doc_id,))
         result = cursor.fetchone()
-
         if result is None:
-            # TODO: lanzar un error si el documento no existe
             return
-
         doc_int_id = result[0]
-
-        # 2. Eliminar de FAISS usando el rowid
         self.index.remove_ids(np.array([doc_int_id]))
-
-        # 3. Eliminar de SQLite usando el UUID
         cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         self.conn.commit()
-
-        # 4. Persistir cambios en el índice
         self._save_index()
 
     def find_similar(
@@ -132,43 +93,30 @@ class FAISSDocumentRepository(IDocumentRepository):
     ) -> List[Tuple[Document, float]]:
         if self.index.ntotal == 0:
             return []
-
         query_vector = np.array([embedding]).astype("float32")
-
-        # 1. Buscar en FAISS. Devuelve distancias y los rowids
         distances, doc_int_ids = self.index.search(query_vector, top_k)
-
         results = []
         cursor = self.conn.cursor()
-
-        # 2. Usar los rowids para recuperar el contenido y el UUID de SQLite
         for i, dist in zip(doc_int_ids[0], distances[0]):
             if i == -1:
                 continue
-
             cursor.execute(
                 "SELECT id, content FROM documents WHERE rowid = ?", (int(i),)
             )
             row = cursor.fetchone()
-
             if row:
                 doc_uuid, content = row
-                # Reconstruimos el objeto Document para devolverlo
                 doc = Document(
                     content=content, embedding=[], doc_id=DocumentID(doc_uuid)
                 )
                 results.append((doc, float(dist)))
-
         return results
 
 
 class UserRepository:
-    """
-    Repositorio para gestionar los datos de los usuarios en la base de datos.
-    """
-
-    def __init__(self, db_path: str = "/app/data/users.db"):
+    def __init__(self, db_path: str = "data/users.db"):
         self.db_path = db_path
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._initialize_db()
 
@@ -177,24 +125,17 @@ class UserRepository:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                hashed_password TEXT NOT NULL,
-                is_verified BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP
-            )
-        """
+                id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+                hashed_password TEXT NOT NULL, is_verified BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP
+            )"""
         )
         self.conn.commit()
 
     def save(self, user: User) -> User:
-        """Guarda un nuevo usuario en la base de datos."""
         cursor = self.conn.cursor()
         user.id = str(uuid.uuid4())
         user.created_at = datetime.now(timezone.utc)
-
         cursor.execute(
             "INSERT INTO users (id, email, name, hashed_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (
@@ -210,7 +151,6 @@ class UserRepository:
         return user
 
     def find_by_email(self, email: str) -> User | None:
-        """Busca un usuario por su dirección de email."""
         cursor = self.conn.cursor()
         cursor.execute(
             "SELECT id, email, name, hashed_password, is_verified FROM users WHERE email = ?",
@@ -228,7 +168,6 @@ class UserRepository:
         return None
 
     def find_by_id(self, user_id: str) -> User | None:
-        """Busca un usuario por su ID."""
         cursor = self.conn.cursor()
         cursor.execute(
             "SELECT id, email, name, hashed_password, is_verified FROM users WHERE id = ?",
@@ -247,12 +186,9 @@ class UserRepository:
 
 
 class TokenRepository:
-    """
-    Repositorio para gestionar los tokens (refresh, verificación, etc.) en la base de datos.
-    """
-
-    def __init__(self, db_path: str = "/app/data/tokens.db"):
+    def __init__(self, db_path: str = "data/tokens.db"):
         self.db_path = db_path
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._initialize_db()
 
@@ -261,15 +197,19 @@ class TokenRepository:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS refresh_tokens (
-                token TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_revoked BOOLEAN DEFAULT FALSE,
+                token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, is_revoked BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        """
+            )"""
         )
         self.conn.commit()
 
-    # TODO: Implementar métodos para guardar, buscar y revocar tokens.
+    def save_refresh_token(
+        self, refresh_token: str, user_id: str, expires_at: datetime
+    ):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (refresh_token, user_id, expires_at),
+        )
+        self.conn.commit()

@@ -1,9 +1,19 @@
 from typing import List, Dict, Any
+from datetime import datetime, timedelta, timezone
 from app.domain.models import (
     Document,
     IDocumentRepository,
     IEmbeddingService,
     DocumentID,
+    User,
+)
+from app.infrastructure.repositories import UserRepository, TokenRepository
+from app.infrastructure.security import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    REFRESH_TOKEN_EXPIRE_DAYS,
 )
 
 
@@ -62,3 +72,62 @@ class DeleteDocumentUseCase:
     def execute(self, doc_id_str: str):
         doc_id = DocumentID(doc_id_str)
         self.repo.delete(doc_id)
+
+
+class RegisterUserUseCase:
+    """Caso de uso para registrar un nuevo usuario."""
+
+    def __init__(self, user_repo: UserRepository):
+        self.user_repo = user_repo
+
+    def execute(self, email: str, password: str, name: str) -> User:
+        # 1. Verificar si el usuario ya existe
+        if self.user_repo.find_by_email(email):
+            raise ValueError("El email ya está en uso.")
+
+        # 2. Hashear la contraseña
+        hashed_password = get_password_hash(password)
+
+        # 3. Crear la entidad de dominio
+        new_user = User(
+            id=None, email=email, name=name, hashed_password=hashed_password
+        )
+
+        # 4. Guardar el nuevo usuario a través del repositorio
+        return self.user_repo.save(new_user)
+
+
+class LoginUserUseCase:
+    """Caso de uso para el inicio de sesión de un usuario."""
+
+    def __init__(self, user_repo: UserRepository, token_repo: TokenRepository):
+        self.user_repo = user_repo
+        self.token_repo = token_repo
+
+    def execute(self, email: str, password: str) -> dict:
+        # 1. Buscar al usuario por su email
+        user = self.user_repo.find_by_email(email)
+        if not user:
+            raise ValueError("Credenciales inválidas.")
+
+        # 2. Verificar la contraseña
+        if not verify_password(password, user.hashed_password):
+            raise ValueError("Credenciales inválidas.")
+
+        # 3. Crear los tokens JWT
+        token_data = {"user_id": user.id, "email": user.email}
+        access_token = create_access_token(data=token_data)
+        refresh_token = create_refresh_token(data=token_data)
+
+        # 4. Guardar el refresh token en la base de datos
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            days=REFRESH_TOKEN_EXPIRE_DAYS
+        )
+        self.token_repo.save_refresh_token(refresh_token, user.id, expires_at)
+
+        # 5. Devolver los tokens y los datos básicos del usuario
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": user,
+        }
