@@ -26,11 +26,14 @@ class OpenAIEmbeddingService(IEmbeddingService):
     """
     Implementación real que llama a la API de OpenAI para generar embeddings.
     """
+
     def __init__(self):
         load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("La variable de entorno OPENAI_API_KEY no está configurada.")
+            raise ValueError(
+                "La variable de entorno OPENAI_API_KEY no está configurada."
+            )
         self.client = openai.OpenAI(api_key=api_key)
         self.model = "text-embedding-3-small"
 
@@ -45,7 +48,10 @@ class FAISSDocumentRepository(IDocumentRepository):
     """
     Repositorio que utiliza FAISS para la búsqueda vectorial y SQLite para los metadatos.
     """
-    def __init__(self, index_path: str = "data/index.faiss", db_path: str = "data/metadata.db"):
+
+    def __init__(
+        self, index_path: str = "data/index.faiss", db_path: str = "data/metadata.db"
+    ):
         self.index_path = index_path
         self.db_path = db_path
         self.dimension = 1536
@@ -56,7 +62,9 @@ class FAISSDocumentRepository(IDocumentRepository):
     def _initialize_db(self):
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         cursor = self.conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, content TEXT NOT NULL)")
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, content TEXT NOT NULL)"
+        )
         self.conn.commit()
 
     def _load_or_create_index(self):
@@ -70,7 +78,10 @@ class FAISSDocumentRepository(IDocumentRepository):
 
     def save(self, document: Document):
         cursor = self.conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO documents (id, content) VALUES (?, ?)",(document.id, document.content))
+        cursor.execute(
+            "INSERT OR REPLACE INTO documents (id, content) VALUES (?, ?)",
+            (document.id, document.content),
+        )
         doc_int_id = cursor.lastrowid
         self.conn.commit()
         embedding_np = np.array([document.embedding]).astype("float32")
@@ -81,26 +92,35 @@ class FAISSDocumentRepository(IDocumentRepository):
         cursor = self.conn.cursor()
         cursor.execute("SELECT rowid FROM documents WHERE id = ?", (doc_id,))
         result = cursor.fetchone()
-        if result is None: return
+        if result is None:
+            return
         doc_int_id = result[0]
         self.index.remove_ids(np.array([doc_int_id]))
         cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         self.conn.commit()
         self._save_index()
 
-    def find_similar(self, embedding: Embedding, top_k: int) -> List[Tuple[Document, float]]:
-        if self.index.ntotal == 0: return []
+    def find_similar(
+        self, embedding: Embedding, top_k: int
+    ) -> List[Tuple[Document, float]]:
+        if self.index.ntotal == 0:
+            return []
         query_vector = np.array([embedding]).astype("float32")
         distances, doc_int_ids = self.index.search(query_vector, top_k)
         results = []
         cursor = self.conn.cursor()
         for i, dist in zip(doc_int_ids[0], distances[0]):
-            if i == -1: continue
-            cursor.execute("SELECT id, content FROM documents WHERE rowid = ?", (int(i),))
+            if i == -1:
+                continue
+            cursor.execute(
+                "SELECT id, content FROM documents WHERE rowid = ?", (int(i),)
+            )
             row = cursor.fetchone()
             if row:
                 doc_uuid, content = row
-                doc = Document(content=content, embedding=[], doc_id=DocumentID(doc_uuid))
+                doc = Document(
+                    content=content, embedding=[], doc_id=DocumentID(doc_uuid)
+                )
                 results.append((doc, float(dist)))
         return results
 
@@ -109,6 +129,7 @@ class UserRepository:
     """
     Repositorio para gestionar los datos de los usuarios en la base de datos.
     """
+
     def __init__(self, db_path: str = "data/users.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -117,7 +138,8 @@ class UserRepository:
 
     def _initialize_db(self):
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
@@ -126,7 +148,8 @@ class UserRepository:
                 is_verified BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP
-            )""")
+            )"""
+        )
         self.conn.commit()
 
     def save(self, user: User) -> User:
@@ -135,25 +158,50 @@ class UserRepository:
         user.created_at = datetime.now(timezone.utc)
         cursor.execute(
             "INSERT INTO users (id, email, name, hashed_password, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (user.id, user.email, user.name, user.hashed_password, user.is_verified, user.created_at)
+            (
+                user.id,
+                user.email,
+                user.name,
+                user.hashed_password,
+                user.is_verified,
+                user.created_at,
+            ),
         )
         self.conn.commit()
         return user
 
     def find_by_email(self, email: str) -> User | None:
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, email, name, hashed_password, is_verified FROM users WHERE email = ?", (email,))
+        cursor.execute(
+            "SELECT id, email, name, hashed_password, is_verified FROM users WHERE email = ?",
+            (email,),
+        )
         row = cursor.fetchone()
         if row:
-            return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
+            return User(
+                id=row[0],
+                email=row[1],
+                name=row[2],
+                hashed_password=row[3],
+                is_verified=bool(row[4]),
+            )
         return None
 
     def find_by_id(self, user_id: str) -> User | None:
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, email, name, hashed_password, is_verified FROM users WHERE id = ?", (user_id,))
+        cursor.execute(
+            "SELECT id, email, name, hashed_password, is_verified FROM users WHERE id = ?",
+            (user_id,),
+        )
         row = cursor.fetchone()
         if row:
-            return User(id=row[0], email=row[1], name=row[2], hashed_password=row[3], is_verified=bool(row[4]))
+            return User(
+                id=row[0],
+                email=row[1],
+                name=row[2],
+                hashed_password=row[3],
+                is_verified=bool(row[4]),
+            )
         return None
 
 
@@ -161,6 +209,7 @@ class TokenRepository:
     """
     Repositorio para gestionar los tokens (refresh, verificación, etc.) en la base de datos.
     """
+
     def __init__(self, db_path: str = "data/tokens.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -169,7 +218,8 @@ class TokenRepository:
 
     def _initialize_db(self):
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS refresh_tokens (
                 token TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -177,13 +227,16 @@ class TokenRepository:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_revoked BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (user_id) REFERENCES users (id)
-            )""")
+            )"""
+        )
         self.conn.commit()
 
-    def save_refresh_token(self, refresh_token: str, user_id: str, expires_at: datetime):
+    def save_refresh_token(
+        self, refresh_token: str, user_id: str, expires_at: datetime
+    ):
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
-            (refresh_token, user_id, expires_at)
+            (refresh_token, user_id, expires_at),
         )
         self.conn.commit()
