@@ -7,8 +7,9 @@ from app.infrastructure.security import (
     verify_password,
     create_access_token,
     decode_token,
+    generate_secure_token,
 )
-from app.infrastructure.repositories import UserRepository
+from app.infrastructure.repositories import UserRepository, TokenRepository
 from app.domain.models import User
 
 # --- 1. Unit Tests para security.py ---
@@ -99,3 +100,43 @@ def test_find_non_existent_user_returns_none(tmp_path):
 
     found_user = repo.find_by_email("non.existent@example.com")
     assert found_user is None
+
+
+def test_save_and_find_email_verification_token(tmp_path):
+    """Verifica que se puede guardar y encontrar un token de verificación de email."""
+    db_path = tmp_path / "test_tokens.db"
+    repo = TokenRepository(db_path=str(db_path))
+    token = generate_secure_token()
+    user_id = "user-123"
+
+    repo.save_email_verification_token(token, user_id)
+
+    found_token = repo.find_email_verification_token(token)
+    assert found_token is not None
+    assert found_token["user_id"] == user_id
+    assert found_token["expires_at"] > datetime.now(timezone.utc)
+
+    # Verifica que el token se elimina
+    repo.delete_email_verification_token(token)
+    found_token_after_delete = repo.find_email_verification_token(token)
+    assert found_token_after_delete is None
+
+
+def test_save_and_find_password_reset_token(tmp_path):
+    """Verifica que se puede guardar, encontrar y usar un token de reseteo."""
+    db_path = tmp_path / "test_tokens.db"
+    repo = TokenRepository(db_path=str(db_path))
+    token = generate_secure_token()
+    user_id = "user-456"
+
+    repo.save_password_reset_token(token, user_id)
+
+    found_token = repo.find_password_reset_token(token)
+    assert found_token is not None
+    assert found_token["user_id"] == user_id
+    assert found_token["is_used"] is False
+
+    # Verifica que se marca como usado
+    repo.mark_password_reset_token_as_used(token)
+    found_token_after_use = repo.find_password_reset_token(token)
+    assert found_token_after_use["is_used"] is True
