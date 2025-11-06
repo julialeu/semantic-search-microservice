@@ -1,9 +1,7 @@
-# app/infrastructure/repositories.py
-
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Tuple
 
 import faiss
@@ -218,6 +216,8 @@ class TokenRepository:
 
     def _initialize_db(self):
         cursor = self.conn.cursor()
+
+        # --- Tabla de Refresh Tokens  ---
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -229,6 +229,32 @@ class TokenRepository:
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )"""
         )
+
+        # --- NUEVA TABLA: Email Verification Tokens ---
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )"""
+        )
+
+        # --- NUEVA TABLA: Password Reset Tokens ---
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_used BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )"""
+        )
+
         self.conn.commit()
 
     def save_refresh_token(
@@ -238,5 +264,67 @@ class TokenRepository:
         cursor.execute(
             "INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
             (refresh_token, user_id, expires_at),
+        )
+        self.conn.commit()
+
+    def save_email_verification_token(self, token: str, user_id: str) -> None:
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            hours=24
+        )  # 24 horas de validez
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO email_verification_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at),
+        )
+        self.conn.commit()
+
+    def find_email_verification_token(self, token: str) -> dict | None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT user_id, expires_at FROM email_verification_tokens WHERE token = ?",
+            (token,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return {"user_id": row[0], "expires_at": datetime.fromisoformat(row[1])}
+        return None
+
+    def delete_email_verification_token(self, token: str) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "DELETE FROM email_verification_tokens WHERE token = ?", (token,)
+        )
+        self.conn.commit()
+
+    def save_password_reset_token(self, token: str, user_id: str) -> None:
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            hours=1
+        )  # 1 hora de validez
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at),
+        )
+        self.conn.commit()
+
+    def find_password_reset_token(self, token: str) -> dict | None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT user_id, expires_at, is_used FROM password_reset_tokens WHERE token = ?",
+            (token,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "user_id": row[0],
+                "expires_at": datetime.fromisoformat(row[1]),
+                "is_used": bool(row[2]),
+            }
+        return None
+
+    def mark_password_reset_token_as_used(self, token: str) -> None:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE password_reset_tokens SET is_used = TRUE WHERE token = ?", (token,)
         )
         self.conn.commit()

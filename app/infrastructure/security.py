@@ -46,5 +46,12 @@ def decode_token(token: str) -> dict | None:
         return None
 
 
+def generate_secure_token() -> str:
+    """
+    Genera un token aleatorio y seguro de 32 bytes (convertido a URL-safe string).
+    """
+    return secrets.token_urlsafe(32)
+
+
 def generate_api_key() -> str:
     return secrets.token_urlsafe(32)
